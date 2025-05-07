@@ -13,6 +13,9 @@ export default function Dashboard(props) {
   const [showSubtractBalanceModal, setShowSubtractBalanceModal] = useState(false);
   const [balanceToAdd, setBalanceToAdd] = useState('');
   const [balanceToSubtract, setBalanceToSubtract] = useState('');
+  const [profitGoal, setProfitGoal] = useState(10000);
+  const [showSetGoalModal, setShowSetGoalModal] = useState(false);
+  const [newProfitGoal, setNewProfitGoal] = useState('');
 
   useEffect(() => {
     const unsubscribe = onSnapshot(collection(db, "tasks"), (snapshot) => {
@@ -22,6 +25,13 @@ export default function Dashboard(props) {
         completed: doc.data().completed || false
       }));
       setTasks(tasksData);
+    });
+
+    const goalUnsubscribe = onSnapshot(collection(db, "profitGoals"), (snapshot) => {
+      if (!snapshot.empty) {
+        const goalData = snapshot.docs[0].data();
+        setProfitGoal(goalData.amount || 10000);
+      }
     });
 
     const balanceUnsubscribe = onSnapshot(collection(db, "balance"), (snapshot) => {
@@ -34,6 +44,7 @@ export default function Dashboard(props) {
     return () => {
       unsubscribe();
       balanceUnsubscribe();
+      goalUnsubscribe();
     };
   }, []);
 
@@ -103,6 +114,35 @@ export default function Dashboard(props) {
     } catch (error) {
       console.error('Error updating balance: ', error);
       alert('Failed to update balance');
+    }
+  };
+
+  const handleSetGoal = async (e) => {
+    e.preventDefault();
+    const amount = parseFloat(newProfitGoal);
+    if (isNaN(amount) || amount <= 0) {
+      alert('Please enter a valid amount');
+      return;
+    }
+
+    try {
+      const goalRef = collection(db, 'profitGoals');
+      const goalSnapshot = await getDocs(goalRef);
+      
+      if (goalSnapshot.empty) {
+        await addDoc(goalRef, { amount: amount });
+      } else {
+        const docRef = doc(db, 'profitGoals', goalSnapshot.docs[0].id);
+        await updateDoc(docRef, {
+          amount: amount
+        });
+      }
+      
+      setNewProfitGoal('');
+      setShowSetGoalModal(false);
+    } catch (error) {
+      console.error('Error updating profit goal: ', error);
+      alert('Failed to update profit goal');
     }
   };
 
@@ -237,6 +277,9 @@ export default function Dashboard(props) {
                       <a href="#" className="btn btn-primary btn-full text-left mt-3" onClick={() => setShowAddBalanceModal(true)}>
                         <i className="la la-plus"></i> Add Balance
                       </a>
+                      <a href="#" className="btn btn-info btn-full text-left mt-2" onClick={() => setShowSetGoalModal(true)}>
+                        <i className="la la-bullseye"></i> Set Profit Goal
+                      </a>
                       <a href="#" className="btn btn-danger btn-full text-left mt-2 mb-3" onClick={() => setShowSubtractBalanceModal(true)}>
                         <i className="la la-minus"></i> Subtract Balance
                       </a>
@@ -264,19 +307,19 @@ export default function Dashboard(props) {
                     <div className="progress-card">
                       <div className="d-flex justify-content-between mb-1">
                         <span className="text-muted">Profit</span>
-                        <span className="text-muted fw-bold"> ₹3K</span>
+                        <span className="text-muted fw-bold">₹ {balance.toLocaleString()}</span>
                       </div>
                       <div className="progress mb-2" style={{ height: "7px" }}>
                         <div
                           className="progress-bar bg-success"
                           role="progressbar"
-                          style={{ width: "78%" }}
-                          aria-valuenow="78"
+                          style={{ width: `${Math.min((balance / (profitGoal || 10000)) * 100, 100)}%` }}
+                          aria-valuenow={Math.min((balance / profitGoal) * 100, 100)}
                           aria-valuemin="0"
-                          aria-valuemax="100"
+                          aria-valuemax={profitGoal}
                           data-toggle="tooltip"
                           data-placement="top"
-                          title="78%"></div>
+                          title={`${Math.min((balance / 10000) * 100, 100)}%`}></div>
                       </div>
                     </div>
                     <div className="progress-card">
@@ -291,7 +334,7 @@ export default function Dashboard(props) {
                           style={{ width: "65%" }}
                           aria-valuenow="60"
                           aria-valuemin="0"
-                          aria-valuemax="100"
+                          aria-valuemax={profitGoal}
                           data-toggle="tooltip"
                           data-placement="top"
                           title="65%"></div>
@@ -309,7 +352,7 @@ export default function Dashboard(props) {
                           style={{ width: `${calculateTaskCompletion()}%` }}
                           aria-valuenow={calculateTaskCompletion()}
                           aria-valuemin="0"
-                          aria-valuemax="100"
+                          aria-valuemax={profitGoal}
                           data-toggle="tooltip"
                           data-placement="top"
                           title={`${calculateTaskCompletion()}%`}></div>
@@ -327,7 +370,7 @@ export default function Dashboard(props) {
                           style={{ width: "60%" }}
                           aria-valuenow="60"
                           aria-valuemin="0"
-                          aria-valuemax="100"
+                          aria-valuemax={profitGoal}
                           data-toggle="tooltip"
                           data-placement="top"
                           title="60%"></div>
@@ -501,7 +544,42 @@ export default function Dashboard(props) {
           </div>
         )}
 
-        {showSubtractBalanceModal && (
+        {showSetGoalModal && (
+        <div className="modal show" style={{ display: 'block', backgroundColor: 'rgba(0,0,0,0.5)' }}>
+          <div className="modal-dialog">
+            <div className="modal-content">
+              <div className="modal-header">
+                <h5 className="modal-title">Set Monthly Profit Goal</h5>
+                <button type="button" className="close" onClick={() => setShowSetGoalModal(false)}>
+                  <span>&times;</span>
+                </button>
+              </div>
+              <form onSubmit={handleSetGoal}>
+                <div className="modal-body">
+                  <div className="form-group">
+                    <label>Monthly Profit Goal</label>
+                    <input
+                      type="number"
+                      className="form-control"
+                      value={newProfitGoal}
+                      onChange={(e) => setNewProfitGoal(e.target.value)}
+                      min="0"
+                      step="100"
+                      required
+                    />
+                  </div>
+                </div>
+                <div className="modal-footer">
+                  <button type="button" className="btn btn-secondary" onClick={() => setShowSetGoalModal(false)}>Cancel</button>
+                  <button type="submit" className="btn btn-primary">Save Goal</button>
+                </div>
+              </form>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showSubtractBalanceModal && (
           <div className="modal show" style={{ display: 'block', backgroundColor: 'rgba(0,0,0,0.5)' }}>
             <div className="modal-dialog">
               <div className="modal-content">
