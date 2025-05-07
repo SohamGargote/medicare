@@ -8,6 +8,11 @@ import AdminFooter from "./layouts/AdminFooter";
 export default function Dashboard(props) {
   const [tasks, setTasks] = useState([]);
   const [newTask, setNewTask] = useState("");
+  const [balance, setBalance] = useState(0);
+  const [showAddBalanceModal, setShowAddBalanceModal] = useState(false);
+  const [showSubtractBalanceModal, setShowSubtractBalanceModal] = useState(false);
+  const [balanceToAdd, setBalanceToAdd] = useState('');
+  const [balanceToSubtract, setBalanceToSubtract] = useState('');
 
   useEffect(() => {
     const unsubscribe = onSnapshot(collection(db, "tasks"), (snapshot) => {
@@ -19,7 +24,17 @@ export default function Dashboard(props) {
       setTasks(tasksData);
     });
 
-    return () => unsubscribe();
+    const balanceUnsubscribe = onSnapshot(collection(db, "balance"), (snapshot) => {
+      if (!snapshot.empty) {
+        const balanceData = snapshot.docs[0].data();
+        setBalance(balanceData.amount || 0);
+      }
+    });
+
+    return () => {
+      unsubscribe();
+      balanceUnsubscribe();
+    };
   }, []);
 
   const addTask = async (e) => {
@@ -60,6 +75,67 @@ export default function Dashboard(props) {
     if (tasks.length === 0) return 0;
     const completedTasks = tasks.filter(task => task.completed).length;
     return Math.round((completedTasks / tasks.length) * 100);
+  };
+
+  const handleAddBalance = async (e) => {
+    e.preventDefault();
+    const amount = parseFloat(balanceToAdd);
+    if (isNaN(amount) || amount <= 0) {
+      alert('Please enter a valid amount');
+      return;
+    }
+    
+    try {
+      const balanceRef = collection(db, 'balance');
+      const balanceSnapshot = await getDocs(balanceRef);
+      
+      if (balanceSnapshot.empty) {
+        await addDoc(balanceRef, { amount: amount });
+      } else {
+        const docRef = doc(db, 'balance', balanceSnapshot.docs[0].id);
+        await updateDoc(docRef, {
+          amount: balance + amount
+        });
+      }
+      
+      setBalanceToAdd('');
+      setShowAddBalanceModal(false);
+    } catch (error) {
+      console.error('Error updating balance: ', error);
+      alert('Failed to update balance');
+    }
+  };
+
+  const handleSubtractBalance = async (e) => {
+    e.preventDefault();
+    const amount = parseFloat(balanceToSubtract);
+    if (isNaN(amount) || amount <= 0) {
+      alert('Please enter a valid amount');
+      return;
+    }
+    
+    if (amount > balance) {
+      alert('Insufficient balance');
+      return;
+    }
+    
+    try {
+      const balanceRef = collection(db, 'balance');
+      const balanceSnapshot = await getDocs(balanceRef);
+      
+      if (!balanceSnapshot.empty) {
+        const docRef = doc(db, 'balance', balanceSnapshot.docs[0].id);
+        await updateDoc(docRef, {
+          amount: balance - amount
+        });
+      }
+      
+      setBalanceToSubtract('');
+      setShowSubtractBalanceModal(false);
+    } catch (error) {
+      console.error('Error updating balance: ', error);
+      alert('Failed to update balance');
+    }
   };
 
   return (
@@ -155,11 +231,16 @@ export default function Dashboard(props) {
                   <div className="card-body">
                     <p className="fw-bold mt-1">My Balance</p>
                     <h4>
-                      <b>₹ 3,018</b>
+                      <b>₹ {balance.toLocaleString()}</b>
                     </h4>
-                    <a href="#" className="btn btn-primary btn-full text-left mt-3 mb-3">
-                      <i className="la la-plus"></i> Add Balance
-                    </a>
+                    <div className="d-flex flex-column">
+                      <a href="#" className="btn btn-primary btn-full text-left mt-3" onClick={() => setShowAddBalanceModal(true)}>
+                        <i className="la la-plus"></i> Add Balance
+                      </a>
+                      <a href="#" className="btn btn-danger btn-full text-left mt-2 mb-3" onClick={() => setShowSubtractBalanceModal(true)}>
+                        <i className="la la-minus"></i> Subtract Balance
+                      </a>
+                    </div>
                   </div>
                   <div className="card-footer">
                     <ul className="nav">
@@ -384,6 +465,76 @@ export default function Dashboard(props) {
         </div>
 
         <AdminFooter />
+
+        {showAddBalanceModal && (
+          <div className="modal show" style={{ display: 'block', backgroundColor: 'rgba(0,0,0,0.5)' }}>
+            <div className="modal-dialog">
+              <div className="modal-content">
+                <div className="modal-header">
+                  <h5 className="modal-title">Add Balance</h5>
+                  <button type="button" className="close" onClick={() => setShowAddBalanceModal(false)}>
+                    <span>&times;</span>
+                  </button>
+                </div>
+                <form onSubmit={handleAddBalance}>
+                  <div className="modal-body">
+                    <div className="form-group">
+                      <label>Amount to Add</label>
+                      <input
+                        type="number"
+                        className="form-control"
+                        value={balanceToAdd}
+                        onChange={(e) => setBalanceToAdd(e.target.value)}
+                        min="0"
+                        step="0.01"
+                        required
+                      />
+                    </div>
+                  </div>
+                  <div className="modal-footer">
+                    <button type="button" className="btn btn-secondary" onClick={() => setShowAddBalanceModal(false)}>Cancel</button>
+                    <button type="submit" className="btn btn-primary">Add</button>
+                  </div>
+                </form>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {showSubtractBalanceModal && (
+          <div className="modal show" style={{ display: 'block', backgroundColor: 'rgba(0,0,0,0.5)' }}>
+            <div className="modal-dialog">
+              <div className="modal-content">
+                <div className="modal-header">
+                  <h5 className="modal-title">Subtract Balance</h5>
+                  <button type="button" className="close" onClick={() => setShowSubtractBalanceModal(false)}>
+                    <span>&times;</span>
+                  </button>
+                </div>
+                <form onSubmit={handleSubtractBalance}>
+                  <div className="modal-body">
+                    <div className="form-group">
+                      <label>Amount to Subtract</label>
+                      <input
+                        type="number"
+                        className="form-control"
+                        value={balanceToSubtract}
+                        onChange={(e) => setBalanceToSubtract(e.target.value)}
+                        min="0"
+                        step="0.01"
+                        required
+                      />
+                    </div>
+                  </div>
+                  <div className="modal-footer">
+                    <button type="button" className="btn btn-secondary" onClick={() => setShowSubtractBalanceModal(false)}>Cancel</button>
+                    <button type="submit" className="btn btn-danger">Subtract</button>
+                  </div>
+                </form>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </>
   );
